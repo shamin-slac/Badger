@@ -211,6 +211,14 @@ def list_routine(keyword="", tags={}):
     cur.execute("pragma table_info(routine)")
     columns = [row[1] for row in cur.fetchall()]
     if "id" not in columns:
+        # Check badger optimization run archive root
+        config_singleton = init_settings()
+        BADGER_ARCHIVE_ROOT = config_singleton.read_value("BADGER_ARCHIVE_ROOT")
+        if BADGER_ARCHIVE_ROOT is None:
+            raise BadgerConfigError("Please set the BADGER_ARCHIVE_ROOT env var!")
+        elif not os.path.exists(BADGER_ARCHIVE_ROOT):
+            os.makedirs(BADGER_ARCHIVE_ROOT)
+            logger.info(f"Badger run root {BADGER_ARCHIVE_ROOT} created")
         cur.execute("""
         create table new_table (
             id text primary key,
@@ -247,14 +255,6 @@ def list_routine(keyword="", tags={}):
             con_run.commit()
             con_run.close()
             filenames = get_runs_by_routine(id)
-            # Check badger optimization run archive root
-            config_singleton = init_settings()
-            BADGER_ARCHIVE_ROOT = config_singleton.read_value("BADGER_ARCHIVE_ROOT")
-            if BADGER_ARCHIVE_ROOT is None:
-                raise BadgerConfigError("Please set the BADGER_ARCHIVE_ROOT env var!")
-            elif not os.path.exists(BADGER_ARCHIVE_ROOT):
-                os.makedirs(BADGER_ARCHIVE_ROOT)
-                logger.info(f"Badger run root {BADGER_ARCHIVE_ROOT} created")
             for i, fname in enumerate(filenames):
                 tokens = fname.split("-")
                 first_level = tokens[1]
@@ -266,8 +266,12 @@ def list_routine(keyword="", tags={}):
                 )
                 filenames[i] = filename
             for filename in filenames:
-                with open(filename, "r") as file:
-                    run = yaml.safe_load(file)
+                try:
+                    with open(filename, "r") as file:
+                        run = yaml.safe_load(file)
+                except FileNotFoundError:
+                    print(f"File {filename} not found. Skipping")
+                    continue
                 run["id"] = id
                 sorted_run = {key: run[key] for key in sorted(run.keys())}
                 with open(filename, "w") as file:
